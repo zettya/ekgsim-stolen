@@ -1,4 +1,6 @@
-# EKGSim
+# Stolen EKGSim
+
+I didnt make ts check https://github.com/aschanken/EKGSim
 
 A calibrated, browser-based **cardiac monitor and dysrhythmia trainer** for
 paramedic / ACLS practice. It renders physiologically-shaped ECG waveforms on a
