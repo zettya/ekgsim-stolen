@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EKGSim — Cardiac Monitor</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2305070a'/%3E%3Cpath d='M3 19h6l2.5-8 3.5 15 2.5-7h9' fill='none' stroke='%2325f58a' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="monitor">
+      <header class="topbar">
+        <div class="brand">EKG<span>Sim</span></div>
+        <div class="rhythm">
+          <span class="rhythm-caption">RHYTHM</span>
+          <span id="rhythm-label">—</span>
+        </div>
+        <div id="alarm" class="alarm" hidden></div>
+        <div class="controls">
+          <button id="audio-settings-toggle" class="btn" title="Audio settings" aria-expanded="false">🔊 AUDIO</button>
+          <div id="audio-settings" class="sound-settings" hidden aria-label="Audio settings">
+            <button id="audio-master" class="btn" type="button">MASTER OFF</button>
+            <button id="audio-qrs" class="btn" type="button">QRS OFF</button>
+            <button id="audio-alarms" class="btn" type="button">ALARMS OFF</button>
+            <button id="audio-defib" class="btn accent" type="button">DEFIB ON</button>
+          </div>
+          <button id="vitals-settings-toggle" class="btn" title="Edit patient vitals" aria-expanded="false">🩺 VITALS</button>
+          <div id="vitals-settings" class="vitals-settings" hidden aria-label="Patient vital signs">
+            <div class="vitals-setting-row"><label>HR <input id="vital-hr" type="number" min="0" max="300" step="1" value="0"><span>bpm</span></label></div>
+            <div class="vitals-setting-row"><label>SYS <input id="vital-sys" type="number" min="0" max="300" step="1" value="0"><span>mmHg</span></label><label>DIA <input id="vital-dia" type="number" min="0" max="200" step="1" value="0"><span>mmHg</span></label></div>
+            <div class="vitals-setting-row"><label>SpO₂ <input id="vital-spo2" type="number" min="0" max="100" step="1" value="98"><span>%</span></label></div>
+            <div class="vitals-setting-actions"><button id="vitals-apply" class="btn accent" type="button">APPLY</button><button id="vitals-clear" class="btn" type="button">USE RHYTHM</button></div>
+            <div class="vitals-setting-note">Manual vitals change the monitor display/alarm state; ECG morphology remains the selected rhythm.</div>
+          </div>
+          <span class="browse-controls">
+            <button id="prev" class="btn" title="Previous rhythm">‹</button>
+            <button id="next" class="btn" title="Next rhythm">›</button>
+            <button id="random" class="btn accent" title="Random rhythm">RANDOM</button>
+          </span>
+          <button id="quiz-toggle" class="btn" title="Practice mode" aria-pressed="false">🎯 QUIZ</button>
+          <button id="defib-toggle" class="btn" title="Defibrillator panel" aria-pressed="false">⚡ DEFIB</button>
+          <button id="learn-toggle" class="btn" title="Algorithms &amp; reference" aria-pressed="false">📖 LEARN</button>
+          <button id="settings-toggle" class="btn" title="Display settings" aria-expanded="false">⚙ SETTINGS</button>
+          <button id="credits-toggle" class="btn" title="Credits" aria-pressed="false">ⓘ CREDITS</button>
+        </div>
+      </header>
+
+      <main class="screen">
+        <section class="traces">
+          <div class="lane-wrap">
+            <canvas id="lane1"></canvas>
+            <select id="lead1" class="lead-select" aria-label="Lane 1 lead"></select>
+          </div>
+          <div class="lane-wrap">
+            <canvas id="lane2"></canvas>
+            <select id="lead2" class="lead-select" aria-label="Lane 2 lead"></select>
+          </div>
+        </section>
+
+        <aside class="vitals">
+          <div class="vital hr">
+            <div class="vital-head">
+              <span class="tag">HR</span><span class="unit">bpm</span>
+            </div>
+            <div class="value" id="hr">--</div>
+          </div>
+
+          <div class="vital nibp" id="nibp-panel" title="Press to recycle">
+            <div class="vital-head">
+              <span class="tag">NIBP</span><span class="unit">mmHg</span>
+            </div>
+            <div class="value small" id="bp">--/--</div>
+            <div class="note" id="bp-note">tap to measure</div>
+          </div>
+
+          <div class="vital spo2">
+            <div class="vital-head">
+              <span class="tag">SpO₂</span><span class="unit">%</span>
+            </div>
+            <div class="value" id="spo2">--</div>
+          </div>
+        </aside>
+      </main>
+
+      <div id="shock-flash" class="shock-flash" aria-hidden="true"></div>
+
+      <section id="settings" class="settings-panel" hidden aria-label="Display settings">
+        <div class="settings-head">
+          <h2>SETTINGS</h2>
+          <button id="settings-close" class="btn" type="button">CLOSE</button>
+        </div>
+        <div class="settings-group">
+          <div class="settings-label">DISPLAY THEME</div>
+          <div class="theme-grid" id="theme-grid">
+            <button class="theme-btn" data-theme="green" type="button"><span class="theme-swatch theme-green"></span>CLASSIC GREEN</button>
+            <button class="theme-btn" data-theme="amber" type="button"><span class="theme-swatch theme-amber"></span>AMBER</button>
+            <button class="theme-btn" data-theme="blue" type="button"><span class="theme-swatch theme-blue"></span>BLUE</button>
+            <button class="theme-btn" data-theme="pink" type="button"><span class="theme-swatch theme-pink"></span>PINK</button>
+            <button class="theme-btn" data-theme="white" type="button"><span class="theme-swatch theme-white"></span>WHITE</button>
+          </div>
+        </div>
+        <div class="settings-note">Theme selection is saved in this browser. It changes the monitor waveform/grid and the normal HUD accent; alarm colors remain clinically distinct.</div>
+      </section>
+
+      <section id="credits" class="credits-panel" hidden aria-label="Credits">
+        <div class="settings-head">
+          <h2>CREDITS</h2>
+          <button id="credits-close" class="btn" type="button">CLOSE</button>
+        </div>
+        <div class="credits-content">
+          <h3>Original EKGSim</h3>
+          <p>EKGSim was originally created by <strong>aschanken</strong>.</p>
+          <p><a href="https://github.com/aschanken/EKGSim" target="_blank" rel="noopener noreferrer">github.com/aschanken/EKGSim</a></p>
+	<p> forked by me, written obviously by ChatGPT and Claude</p>
+          <h3>This fork</h3>
+          <p>This fork contains additional educational, simulation, UI, audio, and electrical-therapy features and modifications.</p>
+          <h3>Disclaimer</h3>
+          <p>For education and simulation only. Not a medical device and not intended for diagnosis or treatment of real patients.</p>
+        </div>
+      </section>
+
+      <section id="defib" class="defib" hidden aria-label="Defibrillator panel">
+        <div class="defib-row">
+          <div class="defib-group">
+            <span class="defib-group-label">ENERGY (biphasic, J)</span>
+            <div class="defib-energy" id="defib-energy">
+              <button type="button" class="btn energy-btn" data-energy="100">100</button>
+              <button type="button" class="btn energy-btn" data-energy="120">120</button>
+              <button type="button" class="btn energy-btn" data-energy="150">150</button>
+              <button type="button" class="btn energy-btn" data-energy="200">200</button>
+              <button type="button" class="btn energy-btn" data-energy="300">300</button>
+              <button type="button" class="btn energy-btn" data-energy="360">360</button>
+            </div>
+          </div>
+          <button id="defib-sync" type="button" class="btn sync-btn" title="Synchronize to the QRS, for cardioversion of a rhythm with a pulse" aria-pressed="false">SYNC OFF</button>
+        </div>
+        <div class="defib-row">
+          <div id="defib-status" class="defib-status">READY · 200 J</div>
+        </div>
+        <div class="defib-row defib-actions">
+          <button id="defib-charge" type="button" class="btn accent charge-btn">⚡ CHARGE</button>
+          <button id="defib-shock" type="button" class="btn shock-btn" disabled>SHOCK</button>
+          <button id="defib-disarm" type="button" class="btn disarm-btn" disabled>DISARM</button>
+        </div>
+        <div class="defib-row pacing-row">
+          <div class="defib-group pacing-group">
+            <span class="defib-group-label">TRANSCUTANEOUS PACING</span>
+            <label class="pace-control">RATE <select id="pace-rate" class="pace-select"><option>60</option><option selected>70</option><option>80</option><option>90</option><option>100</option></select> ppm</label>
+            <label class="pace-control">OUTPUT <input id="pace-output" class="pace-output" type="range" min="30" max="120" step="5" value="70" /> <span id="pace-output-value">70</span> mA</label>
+          </div>
+          <button id="defib-pace" type="button" class="btn pace-btn" aria-pressed="false">▶ START PACING</button>
+          <div id="pace-status" class="pace-status">PACING OFF</div>
+        </div>
+        <div id="defib-message" class="defib-message" hidden></div>
+        <p class="defib-hint">
+          Training interface only — practices the sequence (select energy → SYNC for a
+          rhythm with a pulse → CHARGE → confirm clear → SHOCK), not a real device.
+          Decisions here follow the same rhythm on the monitor above, so browse to a
+          rhythm first. Joule settings shown are typical biphasic ranges taught in ACLS
+          courses, not prescriptive dosing for any device or protocol. Pacing is a teaching
+          simulation: confirm both electrical and mechanical capture in real practice.
+        </p>
+      </section>
+
+      <section id="learn" class="learn" hidden aria-label="Algorithms and reference">
+        <div class="learn-banner">
+          Study reference only — a refresher before practice mode, aligned with the 2025 AHA ACLS framework.
+          It is not a substitute for your ACLS provider course, card, or local protocols. Always follow your
+          service's current guidelines and medical direction.
+        </div>
+
+        <article class="learn-block">
+          <h3>Reading a strip, in order</h3>
+          <ol>
+            <li><strong>Rate</strong> — roughly, count R waves in a 6-second strip ×10, or 300÷(large boxes between R waves).</li>
+            <li><strong>Regularity</strong> — are R-R intervals constant, occasionally irregular, or irregularly irregular?</li>
+            <li><strong>P waves</strong> — present? One before every QRS? Same shape each time (sinus origin)?</li>
+            <li><strong>PR interval</strong> — constant and 0.12–0.20s, or lengthening/dropping/absent?</li>
+            <li><strong>QRS width</strong> — narrow (&lt;0.12s, above the AV node) or wide (≥0.12s, ventricular or aberrant)?</li>
+          </ol>
+          <p class="learn-note">Working the same five questions every time is what makes rhythm ID fast — not memorizing shapes.</p>
+        </article>
+
+        <article class="learn-block">
+          <h3>Cardiac arrest pathway</h3>
+          <p>High-quality CPR is the constant: push hard and fast (≈100–120/min), full recoil, minimize interruptions, rotate compressors ~every 2 minutes to avoid fatigue. Everything else branches off the rhythm check.</p>
+          <div class="learn-cols">
+            <div class="learn-col">
+              <h4>Shockable — VF / pulseless VT</h4>
+              <ul>
+                <li>Defibrillate (unsynchronized) as soon as identified</li>
+                <li>Resume CPR immediately after the shock — don't pulse-check first</li>
+                <li>Epinephrine after the 2nd shock, then every 3–5 min</li>
+                <li>Consider amiodarone or lidocaine if refractory</li>
+                <li>Recheck rhythm every ~2 min</li>
+              </ul>
+            </div>
+            <div class="learn-col">
+              <h4>Non-shockable — asystole / PEA</h4>
+              <ul>
+                <li>No shock — resume/continue CPR</li>
+                <li>Epinephrine as soon as feasible, then every 3–5 min</li>
+                <li>Hunt the H's and T's (below) — PEA in particular is a "find the cause" rhythm</li>
+                <li>Recheck rhythm every ~2 min</li>
+              </ul>
+            </div>
+          </div>
+        </article>
+
+        <article class="learn-block">
+          <h3>Tachycardia with a pulse</h3>
+          <p>First question: is the patient <em>unstable</em> from the rhythm — altered mental status, ischemic chest pain, hypotension, or signs of shock? If yes, that drives synchronized cardioversion regardless of QRS width. If stable, width and regularity decide the next step.</p>
+          <ul>
+            <li><strong>Unstable</strong> → synchronized cardioversion for organized tachyarrhythmias; <strong>sustained polymorphic VT is an exception</strong> and requires an immediate unsynchronized shock because reliable synchronization is not possible</li>
+            <li><strong>Stable, narrow, regular</strong> → vagal maneuvers, then adenosine</li>
+            <li><strong>Stable, narrow, irregular</strong> (e.g. AFib/flutter) → rate/rhythm strategy based on the patient; do <strong>not</strong> give AV-nodal blockers to a patient whose ventricular response is already slow</li>
+            <li><strong>Stable, wide, regular</strong> → antiarrhythmic (e.g. amiodarone) with expert consult</li>
+            <li><strong>Stable, wide, irregular</strong> → consider polymorphic VT or pre-excited AFib; expert consultation is important, and AV-nodal blockers should be avoided when pre-excited AF is suspected</li>
+          </ul>
+        </article>
+
+        <article class="learn-block">
+          <h3>Bradycardia with a pulse</h3>
+          <p>Treat the patient, not the number — a rate under 60 that's perfusing well may need nothing but monitoring.</p>
+          <ul>
+            <li><strong>Symptomatic/unstable</strong> (hypotension, altered mentation, ischemia, shock) → atropine first line</li>
+            <li>If atropine fails or the block is likely infranodal (e.g. Mobitz II, complete block) → transcutaneous pacing, consider epinephrine or dopamine infusion</li>
+            <li><strong>Asymptomatic/stable</strong> → monitor and observe; identify reversible causes</li>
+          </ul>
+        </article>
+
+        <article class="learn-block">
+          <h3>Electrical therapy — which one, and why it matters</h3>
+          <div class="learn-cols">
+            <div class="learn-col">
+              <h4>Defibrillation (unsynchronized)</h4>
+              <p>For pulseless, chaotic rhythms with no organized QRS to time against — VF and pulseless VT. Delivered as soon as the paddles/pads are charged and everyone is clear.</p>
+            </div>
+            <div class="learn-col">
+              <h4>Synchronized cardioversion</h4>
+              <p>For an organized tachyarrhythmia that still has a pulse. The unit times the discharge to the R wave so it can't land on the vulnerable T wave.</p>
+            </div>
+            <div class="learn-col">
+              <h4>Transcutaneous pacing</h4>
+              <p>For symptomatic bradycardia unresponsive to atropine, especially high-grade or infranodal block — paces the heart rather than shocking it.</p>
+            </div>
+          </div>
+          <p class="learn-note">
+            <strong>Why sync mode exists:</strong> an unsynchronized shock delivered during
+            the T wave (relative refractory period) can trigger VF — the "R-on-T"
+            phenomenon. That's fine in pulseless arrest (there's no organized T wave to
+            land on and nothing to lose), but a real hazard on any rhythm with a pulse.
+            Sync mode is how a defibrillator avoids that when cardioverting.
+          </p>
+        </article>
+
+        <article class="learn-block">
+          <h3>High-yield edge cases</h3>
+          <div class="learn-cols">
+            <div class="learn-col">
+              <h4>AF with a slow ventricular response</h4>
+              <p>AF does not automatically mean “rate control.” If the ventricular rate is already slow, AV-nodal blockade can worsen bradycardia. Look for β-blockers, non-DHP calcium-channel blockers, digoxin, conduction disease, ischemia, hypoxia, electrolyte problems, or other reversible causes.</p>
+            </div>
+            <div class="learn-col">
+              <h4>Polymorphic VT / torsades</h4>
+              <p>Sustained polymorphic VT cannot be synchronized reliably. The immediate electrical treatment is an unsynchronized shock. If torsades is associated with prolonged QT, magnesium and correction of the cause help prevent recurrence; pause-dependent torsades may require expert-directed overdrive pacing.</p>
+            </div>
+            <div class="learn-col">
+              <h4>Pre-excited AF</h4>
+              <p>Irregular wide-complex tachycardia can represent AF conducting over an accessory pathway. Avoid AV-nodal blockers when pre-excitation is suspected; expert-directed therapy or synchronized cardioversion may be required depending on stability.</p>
+            </div>
+            <div class="learn-col">
+              <h4>Bradycardia is a clinical diagnosis</h4>
+              <p>A rate around 50 bpm is not automatically an emergency. Treat when the slow rate is causing symptoms or poor perfusion. In high-grade AV block, pacing should be readily available and may be needed early.</p>
+            </div>
+          </div>
+        </article>
+
+        <article class="learn-block">
+          <h3>Electrical therapy — put the rhythm with the right therapy</h3>
+          <div class="learn-table-wrap">
+            <table class="learn-table">
+              <thead><tr><th>Rhythm / ECG pattern</th><th>Electrical therapy</th><th>Why / key distinction</th></tr></thead>
+              <tbody>
+                <tr><td><strong>VF</strong><br>Chaotic baseline, no organized QRS</td><td><strong>Defibrillation</strong><br>Unsynchronized shock</td><td>Shockable cardiac arrest.</td></tr>
+                <tr><td><strong>Pulseless VT</strong><br>Wide, regular ventricular complexes + no pulse</td><td><strong>Defibrillation</strong><br>Unsynchronized shock</td><td>Shockable cardiac arrest.</td></tr>
+                <tr><td><strong>AF / atrial flutter</strong><br>Irregularly irregular AF; sawtooth F waves in flutter</td><td><strong>Synchronized cardioversion</strong> if unstable</td><td>Pulse present + instability attributable to the rhythm. Stable patients need medical/rhythm-specific management instead.</td></tr>
+                <tr><td><strong>SVT</strong><br>Regular narrow-complex tachycardia</td><td><strong>Synchronized cardioversion</strong> if unstable</td><td>Stable regular narrow-complex tachycardia → vagal maneuvers/adenosine rather than immediate electricity.</td></tr>
+                <tr><td><strong>Monomorphic VT with pulse</strong><br>Wide, regular, monomorphic QRS</td><td><strong>Synchronized cardioversion</strong> if unstable</td><td>Stable → antiarrhythmic therapy/expert consultation.</td></tr>
+                <tr><td><strong>Polymorphic VT / torsades</strong><br>QRS axis/amplitude twists around baseline</td><td><strong>Unsynchronized shock</strong> if sustained</td><td>Cannot be reliably synchronized. For torsades with prolonged QT, magnesium/cause correction helps prevent recurrence.</td></tr>
+                <tr><td><strong>Symptomatic bradycardia / high-grade AV block</strong><br>Slow ventricular response, dropped QRS or AV dissociation</td><td><strong>Transcutaneous pacing</strong> when indicated</td><td>Used for clinically significant bradycardia, particularly when atropine is ineffective or inappropriate. Confirm electrical and mechanical capture.</td></tr>
+                <tr><td><strong>Asystole / PEA</strong><br>Flatline or organized electrical activity without a pulse</td><td><strong>No electrical shock</strong></td><td>CPR + epinephrine and aggressive search/treatment of reversible causes.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article class="learn-block">
+          <h3>H's and T's — reversible causes to hunt during arrest</h3>
+          <div class="learn-cols">
+            <div class="learn-col">
+              <h4>H's</h4>
+              <ul>
+                <li><strong>Hypovolemia</strong> — control hemorrhage and give appropriate IV/IO fluid or blood resuscitation.</li>
+                <li><strong>Hypoxia</strong> — optimize airway/ventilation and oxygenation; confirm effective ventilation.</li>
+                <li><strong>Hydrogen ion (acidosis)</strong> — optimize CPR/ventilation and treat the underlying cause; bicarbonate is not routine, except in selected causes.</li>
+                <li><strong>Hypo-/hyperkalemia</strong> — obtain/consider electrolytes and rapidly correct the specific potassium disorder; use cause-specific therapy.</li>
+                <li><strong>Hypothermia</strong> — prevent further heat loss and provide active rewarming according to severity/protocol.</li>
+              </ul>
+            </div>
+            <div class="learn-col">
+              <h4>T's</h4>
+              <ul>
+                <li><strong>Tension pneumothorax</strong> — immediate chest decompression, followed by definitive tube thoracostomy when appropriate.</li>
+                <li><strong>Tamponade</strong> — urgent pericardial decompression; ultrasound can support recognition when available.</li>
+                <li><strong>Toxins</strong> — identify the agent, provide supportive care and a specific antidote when indicated; involve toxicology/poison resources.</li>
+                <li><strong>Pulmonary thrombosis</strong> — consider PE-directed therapy such as systemic thrombolysis or embolectomy/thrombectomy in selected arrest scenarios per protocol.</li>
+                <li><strong>Coronary thrombosis</strong> — treat acute coronary occlusion; after ROSC, urgent coronary evaluation/revascularization is considered when indicated.</li>
+              </ul>
+            </div>
+          </div>
+          <p class="learn-note"><strong>Important:</strong> H's &amp; T's are not a checklist to complete only after several CPR cycles. Search for the most plausible reversible cause while CPR continues and treat it as soon as it is identified.</p>
+        </article>
+      </section>
+
+      <section id="quiz" class="quiz" hidden aria-label="Practice mode">
+        <div class="quiz-score">
+          <div class="quiz-stat">
+            <span class="quiz-stat-tag">STREAK</span><span id="q-streak" class="quiz-stat-val">0</span>
+          </div>
+          <div class="quiz-stat">
+            <span class="quiz-stat-tag">BEST</span><span id="q-best" class="quiz-stat-val">0</span>
+          </div>
+          <div class="quiz-stat wide">
+            <span class="quiz-stat-tag">RHYTHM</span><span id="q-rhythm-acc" class="quiz-stat-val">0%</span>
+          </div>
+          <div class="quiz-stat wide">
+            <span class="quiz-stat-tag">TREATMENT</span><span id="q-tx-acc" class="quiz-stat-val">0%</span>
+          </div>
+        </div>
+        <div id="q-prompt" class="quiz-prompt">Identify the rhythm ↓</div>
+        <div class="quiz-grid" id="q-grid"></div>
+        <div class="quiz-foot">
+          <div id="q-reveal-rhythm" class="quiz-reveal" hidden></div>
+          <div id="q-reveal-tx" class="quiz-reveal" hidden></div>
+          <button id="q-next" class="btn accent" hidden>NEXT ›</button>
+        </div>
+      </section>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
